@@ -657,21 +657,7 @@ func (id3v2 *ID3v23) GetString(name string) (string, error) {
 }
 
 func (id3v2 *ID3v23) SetString(name string, value string) error {
-	frame := ID3v23Frame{
-		Key:   name,
-		Value: SetString(value),
-	}
-
-	// if found set new frame value
-	for i := range id3v2.Frames {
-		if id3v2.Frames[i].Key == name {
-			id3v2.Frames[i].Value = frame.Value
-			return nil
-		}
-	}
-
-	// if not found add new frame to frames
-	id3v2.Frames = append(id3v2.Frames, frame)
+	id3v2.Frames = setStringImpl(name, value, id3v2.Frames)
 	return nil
 }
 

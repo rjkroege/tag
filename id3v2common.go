@@ -15,3 +15,18 @@ func getStringImpl(name string, frames []ID3v2Frame) (string, error) {
 	return "", ErrTagNotFound
 }
 
+func setStringImpl(name, value  string, frames []ID3v2Frame) []ID3v2Frame {
+	newframe := ID3v2Frame{
+		Key:   name,
+		Value: SetString(value),
+	}
+
+	for _, f := range frames {
+		if f.Key == name {
+			f.Value = newframe.Value
+			return frames
+		}
+	}
+
+	return  append(frames, newframe)
+}

@@ -516,3 +516,7 @@ func (id3v2 *ID3v22) GetBytes(name string) ([]byte, error) {
 	return nil, ErrTagNotFound
 }
 
+func (id3v2 *ID3v22) SetString(name string, value string) error {
+	id3v2.Frames = setStringImpl(name, value, id3v2.Frames)
+	return nil
+}
