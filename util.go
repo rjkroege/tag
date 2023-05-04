@@ -56,6 +56,8 @@ func readBytes(input io.Reader, size int) ([]byte, error) {
 	return data, nil
 }
 
+// TODO(rjk): This is not standard compliant? As I understand the Go spec,
+// ASCII >= 128 will not be correclty encoded.
 func GetEncoding(code byte) string {
 	if code == 0 || code == 3 {
 		return encodingUTF8
@@ -82,6 +84,7 @@ func TextEncoding(b []byte) string {
 	return GetEncoding(b[0])
 }
 
+// TODO(rjk): This should truncate the string?
 func DecodeString(b []byte, encoding string) (string, error) {
 	switch encoding {
 	case encodingUTF8:
@@ -100,6 +103,7 @@ func DecodeString(b []byte, encoding string) (string, error) {
 }
 
 // Decode UTF-16 Little Endian to UTF-8.
+// TODO(rjk): Might consider doing this lazily?
 func DecodeUTF16(b []byte) (string, error) {
 	if len(b)%2 != 0 {
 		return "", ErrDecodeEvenLength
@@ -197,6 +201,7 @@ func SetBit(data *byte, bit bool, index byte) {
 	}
 }
 
+// TODO(rjk): This might be mis-named.
 func GetString(b []byte) (string, error) {
 	if len(b) < 2 {
 		return "", ErrIncorrectTag
@@ -213,7 +218,7 @@ func SetString(value string) []byte {
 
 // Read format:
 // [length, data]
-// length in littleIndian.
+// length in littleEndian.
 func readLengthData(input io.Reader, order binary.ByteOrder) ([]byte, error) {
 	// length
 	var length uint32

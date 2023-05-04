@@ -13,10 +13,7 @@ import (
 	"time"
 )
 
-type ID3v22Frame struct {
-	Key   string
-	Value []byte
-}
+type ID3v22Frame = ID3v2Frame
 
 type ID3v22 struct {
 	Marker string // Always
@@ -418,7 +415,6 @@ func ReadID3v22(input io.ReadSeeker) (*ID3v22, error) {
 	if marker != id3MarkerValue {
 		return nil, errors.New("error file marker")
 	}
-
 	header.Marker = marker
 
 	// Version
@@ -426,6 +422,11 @@ func ReadID3v22(input io.ReadSeeker) (*ID3v22, error) {
 	if versionByte != 2 {
 		return nil, ErrUnsupportedFormat
 	}
+	// Sub version is 0.
+
+	// Flags
+	// TODO(rjk): Read flags here.
+	// header.Flags = id3v23Flags(headerByte[5])
 
 	// Length
 	length := ByteToIntSynchsafe(headerByte[6:10])
@@ -438,7 +439,7 @@ func ReadID3v22(input io.ReadSeeker) (*ID3v22, error) {
 		if err != nil {
 			return nil, err
 		}
-		if nReaded != 6 {
+		if nReaded != id3v22FrameHeaderSize {
 			return nil, errors.New("error extended header length")
 		}
 		// Frame identifier
@@ -456,6 +457,8 @@ func ReadID3v22(input io.ReadSeeker) (*ID3v22, error) {
 			return nil, errors.New("error extended value length")
 		}
 
+		// This block is intended to truncate the text frame.
+		// TODO(rjk): Align with the v23 implementation.
 		if key[0:1] == "T" {
 			pos := -1
 			for i, v := range bytesExtendedValue {
@@ -467,6 +470,7 @@ func ReadID3v22(input io.ReadSeeker) (*ID3v22, error) {
 				bytesExtendedValue = bytesExtendedValue[0:pos]
 			}
 		}
+
 
 		header.Frames = append(header.Frames, ID3v22Frame{
 			key,
@@ -500,12 +504,7 @@ func checkID3v22(input io.ReadSeeker) bool {
 }
 
 func (id3v2 *ID3v22) GetString(name string) (string, error) {
-	for i := range id3v2.Frames {
-		if id3v2.Frames[i].Key == name {
-			return GetString(id3v2.Frames[i].Value)
-		}
-	}
-	return "", ErrTagNotFound
+	return getStringImpl(name, id3v2.Frames)
 }
 
 func (id3v2 *ID3v22) GetBytes(name string) ([]byte, error) {
@@ -516,3 +515,4 @@ func (id3v2 *ID3v22) GetBytes(name string) ([]byte, error) {
 	}
 	return nil, ErrTagNotFound
 }
+

@@ -15,6 +15,7 @@ import (
 	"time"
 )
 
+// Identical between ID3v23 and ID3v24
 type id3v24Flags byte
 
 func (flags id3v24Flags) String() string {
@@ -45,11 +46,10 @@ func (flags id3v24Flags) SetExperimentalIndicator(data bool) {
 	SetBit((*byte)(&flags), data, 7)
 }
 
-type ID3v24Frame struct {
-	Key   string
-	Value []byte
-}
+type ID3v24Frame = ID3v2Frame
 
+
+// Sructurally identical to ID3v23 so share more code.
 type ID3v24 struct {
 	Marker     string // Always 'ID3'
 	Version    Version
@@ -648,12 +648,7 @@ func ReadID3v24(input io.ReadSeeker) (*ID3v24, error) {
 }
 
 func (id3v2 *ID3v24) GetString(name string) (string, error) {
-	for i := range id3v2.Frames {
-		if id3v2.Frames[i].Key == name {
-			return GetString(id3v2.Frames[i].Value)
-		}
-	}
-	return "", ErrTagNotFound
+	return getStringImpl(name, id3v2.Frames)
 }
 
 func (id3v2 *ID3v24) SetString(name string, value string) error {

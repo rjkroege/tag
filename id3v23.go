@@ -45,10 +45,7 @@ func (flags id3v23Flags) SetExperimentalIndicator(data bool) {
 	SetBit((*byte)(&flags), data, 7)
 }
 
-type ID3v23Frame struct {
-	Key   string
-	Value []byte
-}
+type ID3v23Frame = ID3v2Frame
 
 type ID3v23 struct {
 	Marker     string // Always 'ID3'
@@ -606,6 +603,8 @@ func ReadID3v23(input io.ReadSeeker) (*ID3v23, error) {
 	header.Frames = []ID3v23Frame{}
 	curRead := 0
 	for curRead < length {
+		// id3v22 has 6 byte headers.
+		// id3v23 has 10 byte frame headers
 		bytesExtendedHeader := make([]byte, 10)
 		nReaded, err = input.Read(bytesExtendedHeader)
 		if err != nil {
@@ -628,7 +627,9 @@ func ReadID3v23(input io.ReadSeeker) (*ID3v23, error) {
 		if nReaded != size {
 			return nil, errors.New("error extended value length")
 		}
-
+		// In this implementation, the code uses the raw frame value. This
+		// is possibly a spec violation.
+		// TODO(rjk): truncate 
 		header.Frames = append(header.Frames, ID3v23Frame{
 			key,
 			bytesExtendedValue,
@@ -637,11 +638,11 @@ func ReadID3v23(input io.ReadSeeker) (*ID3v23, error) {
 		curRead += 10 + size
 	}
 
-	// TODO
 	if curRead != length {
 		return nil, errors.New("error extended frames")
 	}
 
+	// Why do we actually read the entire file data?
 	// file data
 	header.Data, err = ioutil.ReadAll(input)
 	if err != nil {
@@ -652,12 +653,7 @@ func ReadID3v23(input io.ReadSeeker) (*ID3v23, error) {
 }
 
 func (id3v2 *ID3v23) GetString(name string) (string, error) {
-	for i := range id3v2.Frames {
-		if id3v2.Frames[i].Key == name {
-			return GetString(id3v2.Frames[i].Value)
-		}
-	}
-	return "", ErrTagNotFound
+	return getStringImpl(name, id3v2.Frames)
 }
 
 func (id3v2 *ID3v23) SetString(name string, value string) error {
