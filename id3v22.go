@@ -208,15 +208,15 @@ func (id3v2 *ID3v24) GetStringTXX(name string) (string, error) {
 }
 
 func (id3v2 *ID3v22) SetTitle(title string) error {
-	panic("implement me")
+	return id3v2.SetString("TT2", title)
 }
 
 func (id3v2 *ID3v22) SetArtist(artist string) error {
-	panic("implement me")
+	return id3v2.SetString("TP1", artist)
 }
 
 func (id3v2 *ID3v22) SetAlbum(album string) error {
-	panic("implement me")
+	return id3v2.SetString("TAL", album)
 }
 
 func (id3v2 *ID3v22) SetYear(year int) error {
@@ -280,7 +280,7 @@ func (id3v2 *ID3v22) SetDiscNumber(number int, total int) error {
 }
 
 func (id3v2 *ID3v22) SetEncodedBy(encodedBy string) error {
-	panic("implement me")
+	return id3v2.SetString("TEN", encodedBy)
 }
 
 func (id3v2 *ID3v22) SetTrackNumber(number int, total int) error {
