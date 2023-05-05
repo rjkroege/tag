@@ -786,22 +786,7 @@ func (id3v2 *ID3v24) DeleteTagTXXX(name string) error {
 // Description       <text string according to encoding> $00 (00)
 // Value             <text string according to encoding>.
 func (id3v2 *ID3v24) GetStringTXXX(name string) (string, error) {
-	for i := range id3v2.Frames {
-		if id3v2.Frames[i].Key == id3v2FrameTXXX {
-			str, err := GetString(id3v2.Frames[i].Value)
-			if err != nil {
-				return "", err
-			}
-			info := strings.SplitN(str, "\x00", 2)
-			if len(info) != 2 {
-				return "", ErrIncorrectTag
-			}
-			if info[0] == name {
-				return info[1], nil
-			}
-		}
-	}
-	return "", ErrTagNotFound
+	return getStringTxImpl(id3v2FrameTXXX, name, id3v2.Frames)
 }
 
 func (id3v2 *ID3v24) SetStringTXXX(name string, value string) error {

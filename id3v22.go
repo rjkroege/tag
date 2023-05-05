@@ -202,6 +202,11 @@ func (id3v2 *ID3v22) GetAttachedPicture() (*AttachedPicture, error) {
 	return &picture, nil
 }
 
+// GetStringTXX - get user frame
+func (id3v2 *ID3v24) GetStringTXX(name string) (string, error) {
+	return getStringTxImpl(id3v2FrameTXX, name, id3v2.Frames)
+}
+
 func (id3v2 *ID3v22) SetTitle(title string) error {
 	panic("implement me")
 }
@@ -520,3 +525,4 @@ func (id3v2 *ID3v22) SetString(name string, value string) error {
 	id3v2.Frames = setStringImpl(name, value, id3v2.Frames)
 	return nil
 }
+
