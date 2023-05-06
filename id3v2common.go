@@ -1,6 +1,7 @@
 package tag
 
 import (
+	"strconv"
 	"strings"
 )
 
@@ -54,3 +55,12 @@ func getStringTxImpl(key, udname string, frames []ID3v2Frame) (string, error) {
 	}
 	return "", ErrTagNotFound
 }	
+
+func getIntTxImpl(key, udname string, frames []ID3v2Frame) (int, error) {
+	str, err := getStringTxImpl(key, udname, frames)
+	if err != nil {
+		return 0, err
+	}
+	return strconv.Atoi(str)
+}
+

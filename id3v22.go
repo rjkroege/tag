@@ -207,6 +207,10 @@ func (id3v2 *ID3v24) GetStringTXX(name string) (string, error) {
 	return getStringTxImpl(id3v2FrameTXX, name, id3v2.Frames)
 }
 
+func (id3v2 *ID3v24) GetIntTXX(name string) (int, error) {
+	return getIntTxImpl(id3v2FrameTXX, name, id3v2.Frames)
+}
+
 func (id3v2 *ID3v22) SetTitle(title string) error {
 	return id3v2.SetString("TT2", title)
 }
@@ -525,4 +529,3 @@ func (id3v2 *ID3v22) SetString(name string, value string) error {
 	id3v2.Frames = setStringImpl(name, value, id3v2.Frames)
 	return nil
 }
-

@@ -820,9 +820,5 @@ func (id3v2 *ID3v24) SetStringTXXX(name string, value string) error {
 }
 
 func (id3v2 *ID3v24) GetIntTXXX(name string) (int, error) {
-	str, err := id3v2.GetStringTXXX(name)
-	if err != nil {
-		return 0, err
-	}
-	return strconv.Atoi(str)
+	return getIntTxImpl(id3v2FrameTXXX, name, id3v2.Frames)
 }
