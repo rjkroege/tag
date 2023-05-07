@@ -1,6 +1,7 @@
 package tag
 
 import (
+	"io"
 	"strconv"
 	"strings"
 )
@@ -11,56 +12,97 @@ type ID3v2Frame struct {
 	Value []byte
 }
 
-func getStringImpl(name string, frames []ID3v2Frame) (string, error) {
-	for _, f := range frames {
-		if f.Key == name {
-			return GetString(f.Value)
-		}
+func getBytesImpl(k string, frames map[string][]byte) ([]byte, error) {
+	v, ok := frames[k]
+	if !ok {
+		return []byte{}, ErrTagNotFound
 	}
-	return "", ErrTagNotFound
+	return v, nil
 }
 
-func setStringImpl(name, value  string, frames []ID3v2Frame) []ID3v2Frame {
-	newframe := ID3v2Frame{
-		Key:   name,
-		Value: SetString(value),
-	}
-
-	for _, f := range frames {
-		if f.Key == name {
-			f.Value = newframe.Value
-			return frames
-		}
-	}
-
-	return  append(frames, newframe)
+func getStringImpl(k string, frames map[string][]byte) (string, error) {
+	return GetString(getBytesImpl(k, frames))
 }
 
+func setStringImpl(k, v string, frames map[string][]byte) {
+	frames[k] = SetString(v)
+}
 
-func getStringTxImpl(key, udname string, frames []ID3v2Frame) (string, error) {
-	for _, f := range frames {
-		if f.Key == key {
-			str, err := GetString(f.Value)
-			if err != nil {
-				return "", err
-			}
-			info := strings.SplitN(str, "\x00", 2)
-			if len(info) != 2 {
-				return "", ErrIncorrectTag
-			}
-			if info[0] == udname {
-				return info[1], nil
-			}
-		}
-	}
-	return "", ErrTagNotFound
-}	
-
-func getIntTxImpl(key, udname string, frames []ID3v2Frame) (int, error) {
-	str, err := getStringTxImpl(key, udname, frames)
+func wrappedAtoi(str string, err error) (int, error) {
 	if err != nil {
 		return 0, err
 	}
 	return strconv.Atoi(str)
 }
 
+func getAllTagNamesImpl(f, uf map[string][]byte) []string {
+	names := make([]string, 0, len(f)+len(uf))
+	for k := range f {
+		names = append(names, k)
+	}
+	for k := range uf {
+		names = append(names, k)
+	}
+	return names
+}
+
+func writeFramesImpl(writer io.Writer, frames, userframes map[string][]byte) error {
+	for k, v := range frames {
+		header := make([]byte, 10)
+
+		// Frame id
+		copy(header, k)
+
+		// Frame size
+		length := len(v)
+		header[4] = byte(length >> 24)
+		header[5] = byte(length >> 16)
+		header[6] = byte(length >> 8)
+		header[7] = byte(length)
+
+		// write header
+		_, err := writer.Write(header)
+		if err != nil {
+			return err
+		}
+
+		// write data
+		_, err = writer.Write(v)
+		if err != nil {
+			return err
+		}
+
+		// TODO(rjk): Write user frames
+	}
+	return nil
+}
+
+func getFramesLength(f map[string][]byte) int {
+	result := 0
+	// TODO(rjk): Make the size of the header configurable.
+	for _, v := range f {
+		// 10 - size of tag header
+		result += 10 + len(v)
+	}
+	return result
+}
+
+// TODO(rjk): This does way more work than necessary.
+func splitUserFrameValue(v []byte) (string, []byte, error) {
+	// First byte in v is the text encoding.
+
+	str, err := GetString(v, nil)
+	if err != nil {
+		return "", []byte{}, err
+	}
+	info := strings.SplitN(str, "\x00", 2)
+	if len(info) != 2 {
+		return "", []byte{}, ErrIncorrectTag
+	}
+
+	val := make([]byte, 1 /* encoding */ +len(info[1] /* value  */))
+	val[0] = v[0]
+	copy(val[1:], info[1])
+
+	return info[0], val, nil
+}

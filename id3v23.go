@@ -53,17 +53,14 @@ type ID3v23 struct {
 	SubVersion int
 	Flags      id3v23Flags
 	Length     int
-	Frames     []ID3v23Frame
+	Frames     map[string][]byte
+	UserFrames map[string][]byte
 
 	Data []byte
 }
 
 func (id3v2 *ID3v23) GetAllTagNames() []string {
-	var result []string
-	for i := range id3v2.Frames {
-		result = append(result, id3v2.Frames[i].Key)
-	}
-	return result
+	return getAllTagNamesImpl(id3v2.Frames, id3v2.UserFrames)
 }
 
 func (id3v2 *ID3v23) GetVersion() Version {
@@ -331,7 +328,7 @@ func (id3v2 *ID3v23) SetPicture(picture image.Image) error {
 }
 
 func (id3v2 *ID3v23) DeleteAll() error {
-	id3v2.Frames = []ID3v23Frame{}
+	id3v2.Frames = make(map[string][]byte)
 	return nil
 }
 
@@ -460,7 +457,7 @@ func (id3v2 *ID3v23) writeHeaderID3v23(writer io.Writer) error {
 	copy(headerByte[3:6], []byte{3, 0, 0})
 
 	// Length
-	length := id3v2.getFramesLength()
+	length := getFramesLength(id3v2.Frames) + getFramesLength(id3v2.UserFrames)
 	lengthByte := IntToByteSynchsafe(length)
 	copy(headerByte[6:10], lengthByte)
 
@@ -475,42 +472,7 @@ func (id3v2 *ID3v23) writeHeaderID3v23(writer io.Writer) error {
 }
 
 func (id3v2 *ID3v23) writeFramesID3v23(writer io.Writer) error {
-	for i := range id3v2.Frames {
-		header := make([]byte, 10)
-
-		// Frame id
-		copy(header, id3v2.Frames[i].Key)
-
-		// Frame size
-		length := len(id3v2.Frames[i].Value)
-		header[4] = byte(length >> 24)
-		header[5] = byte(length >> 16)
-		header[6] = byte(length >> 8)
-		header[7] = byte(length)
-
-		// write header
-		_, err := writer.Write(header)
-		if err != nil {
-			return err
-		}
-
-		// write data
-		_, err = writer.Write(id3v2.Frames[i].Value)
-		if err != nil {
-			return err
-		}
-	}
-
-	return nil
-}
-
-func (id3v2 *ID3v23) getFramesLength() int {
-	result := 0
-	for i := range id3v2.Frames {
-		// 10 - size of tag header
-		result += 10 + len(id3v2.Frames[i].Value)
-	}
-	return result
+	return writeFramesImpl(writer, id3v2.Frames, id3v2.UserFrames)
 }
 
 func (id3v2 *ID3v23) String() string {
@@ -520,8 +482,11 @@ func (id3v2 *ID3v23) String() string {
 		"Flags: " + id3v2.Flags.String() + "\n" +
 		"Length: " + strconv.Itoa(id3v2.Length) + "\n"
 
-	for i := range id3v2.Frames {
-		result += id3v2.Frames[i].Key + ": " + string(id3v2.Frames[i].Value) + "\n"
+	for k, v := range id3v2.Frames {
+		result += k + ": " + string(v) + "\n"
+	}
+	for k, v := range id3v2.UserFrames {
+		result += k + ": " + string(v) + "\n"
 	}
 
 	return result
@@ -600,7 +565,8 @@ func ReadID3v23(input io.ReadSeeker) (*ID3v23, error) {
 	header.Length = length
 
 	// Extended headers
-	header.Frames = []ID3v23Frame{}
+	header.Frames = make(map[string][]byte)
+	header.UserFrames = make(map[string][]byte)
 	curRead := 0
 	for curRead < length {
 		// id3v22 has 6 byte headers.
@@ -627,13 +593,22 @@ func ReadID3v23(input io.ReadSeeker) (*ID3v23, error) {
 		if nReaded != size {
 			return nil, errors.New("error extended value length")
 		}
-		// In this implementation, the code uses the raw frame value. This
-		// is possibly a spec violation.
-		// TODO(rjk): truncate 
-		header.Frames = append(header.Frames, ID3v23Frame{
-			key,
-			bytesExtendedValue,
-		})
+
+		// TODO(rjk): In this implementation, the code uses the raw frame value. This
+		// is possibly a spec violation. This is a property shared with the v24 version.
+		// The v20 version truncates.
+
+		if key == id3v2FrameTXXX {
+			// Handle user frames.
+			k, v, err := splitUserFrameValue(bytesExtendedValue)
+			if err != nil {
+				// Skip malformed usertags.
+				continue
+			}
+			header.UserFrames[k] = v
+		} else {
+			header.Frames[key] = bytesExtendedValue
+		}
 
 		curRead += 10 + size
 	}
@@ -657,7 +632,7 @@ func (id3v2 *ID3v23) GetString(name string) (string, error) {
 }
 
 func (id3v2 *ID3v23) SetString(name string, value string) error {
-	id3v2.Frames = setStringImpl(name, value, id3v2.Frames)
+	setStringImpl(name, value, id3v2.Frames)
 	return nil
 }
 
@@ -743,48 +718,12 @@ func (id3v2 *ID3v23) SetAttachedPicture(picture *AttachedPicture) error {
 }
 
 func (id3v2 *ID3v23) DeleteTag(name string) error {
-	index := -1
-	for i := range id3v2.Frames {
-		if id3v2.Frames[i].Key == name {
-			index = i
-			break
-		}
-	}
-
-	// already deleted or not exist
-	if index == -1 {
-		return nil
-	}
-
-	id3v2.Frames = append(id3v2.Frames[:index], id3v2.Frames[index+1:]...)
+	delete(id3v2.Frames, name)
 	return nil
 }
 
 func (id3v2 *ID3v23) DeleteTagTXXX(name string) error {
-	index := -1
-	for i := range id3v2.Frames {
-		if id3v2.Frames[i].Key == id3v2FrameTXXX {
-			str, err := GetString(id3v2.Frames[i].Value)
-			if err != nil {
-				return err
-			}
-			info := strings.SplitN(str, "\x00", 2)
-			if len(info) != 2 {
-				return ErrIncorrectTag
-			}
-			if info[0] == name {
-				index = i
-				break
-			}
-		}
-	}
-
-	// already deleted or not exist
-	if index == -1 {
-		return nil
-	}
-
-	id3v2.Frames = append(id3v2.Frames[:index], id3v2.Frames[index+1:]...)
+	delete(id3v2.UserFrames, name)
 	return nil
 }
 
@@ -794,37 +733,14 @@ func (id3v2 *ID3v23) DeleteTagTXXX(name string) error {
 // Description       <text string according to encoding> $00 (00)
 // Value             <text string according to encoding>.
 func (id3v2 *ID3v23) GetStringTXXX(name string) (string, error) {
-	return getStringTxImpl(id3v2FrameTXXX, name, id3v2.Frames)
+	return getStringImpl(name, id3v2.UserFrames)
 }
 
 func (id3v2 *ID3v23) SetStringTXXX(name string, value string) error {
-	result := ID3v23Frame{
-		Key:   "TXXX",
-		Value: SetString(name + "\x00" + value),
-	}
-
-	// find tag
-	for i := range id3v2.Frames {
-		if id3v2.Frames[i].Key == id3v2FrameTXXX {
-			str, err := GetString(id3v2.Frames[i].Value)
-			if err != nil {
-				continue
-			}
-			info := strings.SplitN(str, "\x00", 2)
-			if len(info) != 2 {
-				continue
-			}
-			if info[0] == name {
-				id3v2.Frames[i] = result
-				return nil
-			}
-		}
-	}
-
-	id3v2.Frames = append(id3v2.Frames, result)
+	setStringImpl(name, value, id3v2.UserFrames)
 	return nil
 }
 
 func (id3v2 *ID3v23) GetIntTXXX(name string) (int, error) {
-	return getIntTxImpl(id3v2FrameTXXX, name, id3v2.Frames)
+	return wrappedAtoi(getStringImpl(name, id3v2.UserFrames))
 }

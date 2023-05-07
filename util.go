@@ -202,7 +202,11 @@ func SetBit(data *byte, bit bool, index byte) {
 }
 
 // TODO(rjk): This might be mis-named.
-func GetString(b []byte) (string, error) {
+func GetString(b []byte, err error) (string, error) {
+	if err != nil {
+		return "", err
+	}
+
 	if len(b) < 2 {
 		return "", ErrIncorrectTag
 	}

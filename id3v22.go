@@ -16,13 +16,14 @@ import (
 type ID3v22Frame = ID3v2Frame
 
 type ID3v22 struct {
-	Marker string // Always
-	Length int
-	Frames []ID3v22Frame
+	Marker     string // Always
+	Length     int
+	Frames     map[string][]byte
+	UserFrames map[string][]byte
 }
 
 func (id3v2 *ID3v22) GetAllTagNames() []string {
-	panic("implement me")
+	return getAllTagNamesImpl(id3v2.Frames, id3v2.UserFrames)
 }
 
 func (id3v2 *ID3v22) GetVersion() Version {
@@ -204,11 +205,11 @@ func (id3v2 *ID3v22) GetAttachedPicture() (*AttachedPicture, error) {
 
 // GetStringTXX - get user frame
 func (id3v2 *ID3v24) GetStringTXX(name string) (string, error) {
-	return getStringTxImpl(id3v2FrameTXX, name, id3v2.Frames)
+	return getStringImpl(name, id3v2.UserFrames)
 }
 
 func (id3v2 *ID3v24) GetIntTXX(name string) (int, error) {
-	return getIntTxImpl(id3v2FrameTXX, name, id3v2.Frames)
+	return wrappedAtoi(getStringImpl(name, id3v2.UserFrames))
 }
 
 func (id3v2 *ID3v22) SetTitle(title string) error {
@@ -441,6 +442,8 @@ func ReadID3v22(input io.ReadSeeker) (*ID3v22, error) {
 	length := ByteToIntSynchsafe(headerByte[6:10])
 	header.Length = length
 
+	// Extended headers
+	header.Frames = make(map[string][]byte)
 	curRead := 0
 	for curRead < length {
 		bytesExtendedHeader := make([]byte, id3v22FrameHeaderSize)
@@ -480,11 +483,15 @@ func ReadID3v22(input io.ReadSeeker) (*ID3v22, error) {
 			}
 		}
 
+		header.Frames[key] = bytesExtendedValue
+		// TODO(rjk): handle user frames!
 
-		header.Frames = append(header.Frames, ID3v22Frame{
-			key,
-			bytesExtendedValue,
-		})
+		/*
+			header.Frames = append(header.Frames, ID3v22Frame{
+				key,
+				bytesExtendedValue,
+			})
+		*/
 
 		curRead += id3v22FrameHeaderSize + size
 	}
@@ -517,15 +524,10 @@ func (id3v2 *ID3v22) GetString(name string) (string, error) {
 }
 
 func (id3v2 *ID3v22) GetBytes(name string) ([]byte, error) {
-	for i := range id3v2.Frames {
-		if id3v2.Frames[i].Key == name {
-			return id3v2.Frames[i].Value, nil
-		}
-	}
-	return nil, ErrTagNotFound
+	return getBytesImpl(name, id3v2.Frames)
 }
 
 func (id3v2 *ID3v22) SetString(name string, value string) error {
-	id3v2.Frames = setStringImpl(name, value, id3v2.Frames)
+	setStringImpl(name, value, id3v2.Frames)
 	return nil
 }
