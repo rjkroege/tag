@@ -15,50 +15,9 @@ import (
 	"time"
 )
 
-// Identical between ID3v23 and ID3v24
-type id3v24Flags byte
-
-func (flags id3v24Flags) String() string {
-	return strconv.Itoa(int(flags))
-}
-
-func (flags id3v24Flags) IsUnsynchronisation() bool {
-	return GetBit(byte(flags), 7) == 1
-}
-
-func (flags id3v24Flags) SetUnsynchronisation(data bool) {
-	SetBit((*byte)(&flags), data, 7)
-}
-
-func (flags id3v24Flags) HasExtendedHeader() bool {
-	return GetBit(byte(flags), 6) == 1
-}
-
-func (flags id3v24Flags) SetExtendedHeader(data bool) {
-	SetBit((*byte)(&flags), data, 7)
-}
-
-func (flags id3v24Flags) IsExperimentalIndicator() bool {
-	return GetBit(byte(flags), 5) == 1
-}
-
-func (flags id3v24Flags) SetExperimentalIndicator(data bool) {
-	SetBit((*byte)(&flags), data, 7)
-}
-
-// type ID3v24Frame = ID3v2Frame
-
 // Sructurally identical to ID3v23 so share more code.
 type ID3v24 struct {
-	Marker     string // Always 'ID3'
-	Version    Version
-	SubVersion int
-	Flags      id3v24Flags
-	Length     int
-	Frames     map[string][]byte
-	UserFrames map[string][]byte
-
-	Data []byte
+	ID3v2
 }
 
 type AttachedPicture struct {
@@ -555,7 +514,7 @@ func ReadID3v24(input io.ReadSeeker) (*ID3v24, error) {
 	header.SubVersion = int(subVersionByte)
 
 	// Flags
-	header.Flags = id3v24Flags(headerByte[5])
+	header.Flags = id3v2Flags(headerByte[5])
 
 	// Length
 	length := ByteToIntSynchsafe(headerByte[6:10])

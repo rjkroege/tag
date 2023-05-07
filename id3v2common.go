@@ -6,6 +6,48 @@ import (
 	"strings"
 )
 
+type id3v2Flags byte
+
+func (flags id3v2Flags) String() string {
+	return strconv.Itoa(int(flags))
+}
+
+func (flags id3v2Flags) IsUnsynchronisation() bool {
+	return GetBit(byte(flags), 7) == 1
+}
+
+func (flags id3v2Flags) SetUnsynchronisation(data bool) {
+	SetBit((*byte)(&flags), data, 7)
+}
+
+func (flags id3v2Flags) HasExtendedHeader() bool {
+	return GetBit(byte(flags), 6) == 1
+}
+
+func (flags id3v2Flags) SetExtendedHeader(data bool) {
+	SetBit((*byte)(&flags), data, 7)
+}
+
+func (flags id3v2Flags) IsExperimentalIndicator() bool {
+	return GetBit(byte(flags), 5) == 1
+}
+
+func (flags id3v2Flags) SetExperimentalIndicator(data bool) {
+	SetBit((*byte)(&flags), data, 7)
+}
+
+type ID3v2 struct {
+	Marker     string // Always 'ID3'
+	Version    Version
+	SubVersion int
+	Flags      id3v2Flags
+	Length     int
+	Frames     map[string][]byte
+	UserFrames map[string][]byte
+
+	Data []byte
+}
+
 // Identical in ID3v2[234].
 type ID3v2Frame struct {
 	Key   string

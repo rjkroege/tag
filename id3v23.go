@@ -17,46 +17,8 @@ import (
 
 type id3v23Flags byte
 
-func (flags id3v23Flags) String() string {
-	return strconv.Itoa(int(flags))
-}
-
-func (flags id3v23Flags) IsUnsynchronisation() bool {
-	return GetBit(byte(flags), 7) == 1
-}
-
-func (flags id3v23Flags) SetUnsynchronisation(data bool) {
-	SetBit((*byte)(&flags), data, 7)
-}
-
-func (flags id3v23Flags) HasExtendedHeader() bool {
-	return GetBit(byte(flags), 6) == 1
-}
-
-func (flags id3v23Flags) SetExtendedHeader(data bool) {
-	SetBit((*byte)(&flags), data, 7)
-}
-
-func (flags id3v23Flags) IsExperimentalIndicator() bool {
-	return GetBit(byte(flags), 5) == 1
-}
-
-func (flags id3v23Flags) SetExperimentalIndicator(data bool) {
-	SetBit((*byte)(&flags), data, 7)
-}
-
-type ID3v23Frame = ID3v2Frame
-
 type ID3v23 struct {
-	Marker     string // Always 'ID3'
-	Version    Version
-	SubVersion int
-	Flags      id3v23Flags
-	Length     int
-	Frames     map[string][]byte
-	UserFrames map[string][]byte
-
-	Data []byte
+	ID3v2
 }
 
 func (id3v2 *ID3v23) GetAllTagNames() []string {
@@ -558,7 +520,7 @@ func ReadID3v23(input io.ReadSeeker) (*ID3v23, error) {
 	header.SubVersion = int(subVersionByte)
 
 	// Flags
-	header.Flags = id3v23Flags(headerByte[5])
+	header.Flags = id3v2Flags(headerByte[5])
 
 	// Length
 	length := ByteToIntSynchsafe(headerByte[6:10])
