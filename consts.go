@@ -20,6 +20,7 @@ const (
 	id3v2FrameTXXX        = "TXXX" // TXXX frame name for id3v2[3,4] format
 	id3v2FrameTXX         = "TXX"  // TXX frame name for id3v2 format
 	id3v22FrameHeaderSize = 6      // id3v22 frame header size
+	id3v24FrameHeaderSize = 10      // id3v22 frame header size
 
 	// flac consts.
 	FLACIdentifier = "fLaC" // flac format identifier

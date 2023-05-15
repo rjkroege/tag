@@ -118,23 +118,7 @@ func (id3v2 *ID3v23) GetDescription() (string, error) {
 }
 
 func (id3v2 *ID3v23) GetDiscNumber() (int, int, error) {
-	dickNumber, err := id3v2.GetString("TPOS")
-	if err != nil {
-		return 0, 0, err
-	}
-	numbers := strings.Split(dickNumber, "/")
-	if len(numbers) != 2 {
-		return 0, 0, ErrIncorrectLength
-	}
-	number, err := strconv.Atoi(numbers[0])
-	if err != nil {
-		return 0, 0, err
-	}
-	total, err := strconv.Atoi(numbers[1])
-	if err != nil {
-		return 0, 0, err
-	}
-	return number, total, nil
+	return getSplitNumberImpl("TPOS", id3v2.Frames )
 }
 
 func (id3v2 *ID3v23) GetEncodedBy() (string, error) {
@@ -142,8 +126,7 @@ func (id3v2 *ID3v23) GetEncodedBy() (string, error) {
 }
 
 func (id3v2 *ID3v23) GetTrackNumber() (int, int, error) {
-	track, err := id3v2.GetInt("TRCK")
-	return track, track, err
+	return getSplitNumberImpl("TRCK", id3v2.Frames )
 }
 
 func (id3v2 *ID3v23) GetPicture() (image.Image, error) {
@@ -396,7 +379,11 @@ func (id3v2 *ID3v23) Save(input io.WriteSeeker) error {
 	}
 
 	// write tags
-	err = id3v2.writeFramesID3v23(input)
+	err =  writeFramesImpl(input, id3v2.Frames, sizePackID3v234)
+	if err != nil {
+		return err
+	}
+	err =  writeFramesImpl(input,  id3v2.UserFrames, sizePackID3v234)
 	if err != nil {
 		return err
 	}
@@ -410,31 +397,12 @@ func (id3v2 *ID3v23) Save(input io.WriteSeeker) error {
 }
 
 func (id3v2 *ID3v23) writeHeaderID3v23(writer io.Writer) error {
-	headerByte := make([]byte, 10)
-
-	// ID3
-	copy(headerByte[0:3], id3MarkerValue)
-
-	// Version, Subversion, Flags
-	copy(headerByte[3:6], []byte{3, 0, 0})
-
-	// Length
-	length := getFramesLength(id3v2.Frames) + getFramesLength(id3v2.UserFrames)
-	lengthByte := IntToByteSynchsafe(length)
-	copy(headerByte[6:10], lengthByte)
-
-	nWritten, err := writer.Write(headerByte)
-	if err != nil {
-		return err
+	id3v24packings := AllHeaderFields{
+		 []byte(id3MarkerValue),
+		 []byte{3, 0, 0},
+		IntToByteSynchsafe(getFramesLength(id3v2.Frames) + getFramesLength(id3v2.UserFrames)),
 	}
-	if nWritten != 10 {
-		return ErrWriting
-	}
-	return nil
-}
-
-func (id3v2 *ID3v23) writeFramesID3v23(writer io.Writer) error {
-	return writeFramesImpl(writer, id3v2.Frames, id3v2.UserFrames)
+	return writeHeaderImpl(writer, id3v24packings)
 }
 
 func (id3v2 *ID3v23) String() string {

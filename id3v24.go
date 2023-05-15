@@ -9,7 +9,6 @@ import (
 	"image/png"
 	"io"
 	"io/ioutil"
-	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -56,6 +55,7 @@ func (id3v2 *ID3v24) GetYear() (int, error) {
 	return date.Year(), err
 }
 
+// TODO(rjk): I don't think that this is the right API. We drop language?
 func (id3v2 *ID3v24) GetComment() (string, error) {
 	// id3v2
 	// Comment struct must be greater than 4
@@ -124,23 +124,7 @@ func (id3v2 *ID3v24) GetDescription() (string, error) {
 }
 
 func (id3v2 *ID3v24) GetDiscNumber() (int, int, error) {
-	dickNumber, err := id3v2.GetString("TPOS")
-	if err != nil {
-		return 0, 0, err
-	}
-	numbers := strings.Split(dickNumber, "/")
-	if len(numbers) != 2 {
-		return 0, 0, ErrIncorrectLength
-	}
-	number, err := strconv.Atoi(numbers[0])
-	if err != nil {
-		return 0, 0, err
-	}
-	total, err := strconv.Atoi(numbers[1])
-	if err != nil {
-		return 0, 0, err
-	}
-	return number, total, nil
+	return getSplitNumberImpl("TPOS", id3v2.Frames )
 }
 
 func (id3v2 *ID3v24) GetEncodedBy() (string, error) {
@@ -148,8 +132,7 @@ func (id3v2 *ID3v24) GetEncodedBy() (string, error) {
 }
 
 func (id3v2 *ID3v24) GetTrackNumber() (int, int, error) {
-	track, err := id3v2.GetInt("TRCK")
-	return track, track, err
+	return getSplitNumberImpl("TRCK", id3v2.Frames )
 }
 
 func (id3v2 *ID3v24) GetPicture() (image.Image, error) {
@@ -205,6 +188,11 @@ func (id3v2 *ID3v24) SetYear(year int) error {
 	)
 }
 
+// TODO(rjk): This is wrong. But I will fix it later. I am failing to
+// correctly support the case with multiple comments.
+// The ID3v24 implementation seems to presume that the caller
+// is responsible for the summary and language semantics. Or else
+// the ID3v24 spec differs. Regardless, I have something to fix here.
 func (id3v2 *ID3v24) SetComment(comment string) error {
 	return id3v2.SetString("COMM", comment)
 }
@@ -386,14 +374,9 @@ func (id3v2 *ID3v24) DeletePicture() error {
 }
 
 func (id3v2 *ID3v24) SaveFile(path string) error {
-	file, err := os.Create(path)
-	if err != nil {
-		return err
-	}
-	defer file.Close()
-
-	return id3v2.Save(file)
+	return saveFileImpl(id3v2, path)
 }
+
 
 func (id3v2 *ID3v24) Save(input io.WriteSeeker) error {
 	// write header
@@ -403,7 +386,11 @@ func (id3v2 *ID3v24) Save(input io.WriteSeeker) error {
 	}
 
 	// write tags
-	err = id3v2.writeFramesID3v24(input)
+	err =  writeFramesImpl(input, id3v2.Frames, sizePackID3v234)
+	if err != nil {
+		return err
+	}
+	err =  writeFramesImpl(input,  id3v2.UserFrames, sizePackID3v234)
 	if err != nil {
 		return err
 	}
@@ -416,7 +403,9 @@ func (id3v2 *ID3v24) Save(input io.WriteSeeker) error {
 	return nil
 }
 
+// TODO(rjk): Can refactor this further.
 func (id3v2 *ID3v24) writeHeaderID3v24(writer io.Writer) error {
+/*
 	headerByte := make([]byte, 10)
 
 	// ID3
@@ -439,10 +428,15 @@ func (id3v2 *ID3v24) writeHeaderID3v24(writer io.Writer) error {
 		return ErrWriting
 	}
 	return nil
-}
+*/
+	
+	id3v24packings := AllHeaderFields{
+		 []byte(id3MarkerValue),
+		 []byte{4, 0, 0},
+		IntToByteSynchsafe(getFramesLength(id3v2.Frames) + getFramesLength(id3v2.UserFrames)),
+	}
 
-func (id3v2 *ID3v24) writeFramesID3v24(writer io.Writer) error {
-	return writeFramesImpl(writer, id3v2.Frames, id3v2.UserFrames)
+	return writeHeaderImpl(writer, id3v24packings)
 }
 
 func (id3v2 *ID3v24) String() string {
@@ -649,6 +643,8 @@ func (id3v2 *ID3v24) GetAttachedPicture() (*AttachedPicture, error) {
 
 // nolint:gocritic
 func (id3v2 *ID3v24) SetAttachedPicture(picture *AttachedPicture) error {
+	// TODO(rjk): Need a test to roundtrip the handling of the pictures.
+/*
 	// set UTF-8
 	result := []byte{0}
 
@@ -667,6 +663,9 @@ func (id3v2 *ID3v24) SetAttachedPicture(picture *AttachedPicture) error {
 	result = append(result, picture.Data...)
 
 	return id3v2.SetString("APIC", string(result))
+*/
+	setAttachedPictureImpl("APIC", picture, id3v2.Frames)
+	return nil
 }
 
 func (id3v2 *ID3v24) DeleteTag(name string) error {

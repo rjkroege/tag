@@ -9,6 +9,9 @@ import (
 	"net/http"
 	"unicode/utf16"
 	"unicode/utf8"
+	"strconv"
+	"strings"
+	"os"
 )
 
 func seekAndRead(input io.ReadSeeker, offset int64, whence int, read int) ([]byte, error) {
@@ -312,4 +315,245 @@ func SplitBytesWithTextDescription(data []byte, encoding string) [][]byte {
 		result[1] = result[1][1:]
 	}
 	return result
+}
+
+func getBytesImpl(k string, frames map[string][]byte) ([]byte, error) {
+	v, ok := frames[k]
+	if !ok {
+		return []byte{}, ErrTagNotFound
+	}
+	return v, nil
+}
+
+func getStringImpl(k string, frames map[string][]byte) (string, error) {
+	return GetString(getBytesImpl(k, frames))
+}
+
+func setStringImpl(k, v string, frames map[string][]byte) {
+	frames[k] = SetString(v)
+}
+
+func wrappedAtoi(str string, err error) (int, error) {
+	if err != nil {
+		return 0, err
+	}
+	return strconv.Atoi(str)
+}
+
+func getAllTagNamesImpl(f, uf map[string][]byte) []string {
+	names := make([]string, 0, len(f)+len(uf))
+	for k := range f {
+		names = append(names, k)
+	}
+	for k := range uf {
+		names = append(names, k)
+	}
+	return names
+}
+
+func sizePackID3v234(length int) []byte {
+	header := make([]byte, id3v24FrameHeaderSize)
+		header[4] = byte(length >> 24)
+		header[5] = byte(length >> 16)
+		header[6] = byte(length >> 8)
+		header[7] = byte(length)
+	return header
+}
+
+func writeFramesImpl(writer io.Writer, hf map[string][]byte, packer func(int)[]byte) error {
+	for k, v := range hf {
+		header := packer(len(v))
+
+		// Frame id
+		copy(header, k)
+
+		// write header
+		_, err := writer.Write(header)
+		if err != nil {
+			return err
+		}
+
+		// write data
+		_, err = writer.Write(v)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func getFramesLength(f map[string][]byte) int {
+	result := 0
+	// TODO(rjk): Make the size of the header configurable.
+	for _, v := range f {
+		// 10 - size of tag header
+		result += 10 + len(v)
+	}
+	return result
+}
+
+// TODO(rjk): This does way more work than necessary.
+func splitUserFrameValue(v []byte) (string, []byte, error) {
+	// First byte in v is the text encoding.
+
+	str, err := GetString(v, nil)
+	if err != nil {
+		return "", []byte{}, err
+	}
+	info := strings.SplitN(str, "\x00", 2)
+	if len(info) != 2 {
+		return "", []byte{}, ErrIncorrectTag
+	}
+
+	val := make([]byte, 1 /* encoding */ +len(info[1] /* value  */))
+	val[0] = v[0]
+	copy(val[1:], info[1])
+
+	return info[0], val, nil
+}
+
+type ID3v2 struct {
+	Marker     string // Always 'ID3'
+	Version    Version
+	SubVersion int
+	Flags      id3v2Flags
+	Length     int
+	Frames     map[string][]byte
+	UserFrames map[string][]byte
+
+	Data []byte
+}
+
+// Identical in ID3v2[234].
+type ID3v2Frame struct {
+	Key   string
+	Value []byte
+}
+
+type id3v2Flags byte
+
+func (flags id3v2Flags) String() string {
+	return strconv.Itoa(int(flags))
+}
+
+func (flags id3v2Flags) IsUnsynchronisation() bool {
+	return GetBit(byte(flags), 7) == 1
+}
+
+func (flags id3v2Flags) SetUnsynchronisation(data bool) {
+	SetBit((*byte)(&flags), data, 7)
+}
+
+func (flags id3v2Flags) HasExtendedHeader() bool {
+	return GetBit(byte(flags), 6) == 1
+}
+
+func (flags id3v2Flags) SetExtendedHeader(data bool) {
+	SetBit((*byte)(&flags), data, 7)
+}
+
+func (flags id3v2Flags) IsExperimentalIndicator() bool {
+	return GetBit(byte(flags), 5) == 1
+}
+
+func (flags id3v2Flags) SetExperimentalIndicator(data bool) {
+	SetBit((*byte)(&flags), data, 7)
+}
+
+// getSplitNumberImpl returns the 3 cases 
+// There are 3 cases: num, num / num or error.
+func getSplitNumberImpl(tname string, frames map[string][]byte) (int, int, error) {
+	disknumbers, err := getStringImpl(tname, frames)
+	if err != nil {
+		return 0, 0, err
+	}
+
+	numbers := strings.Split(disknumbers, "/")
+	if len(numbers)  < 1 {
+		return 0, 0, ErrIncorrectLength
+	}
+	number, err := strconv.Atoi(numbers[0])
+	if err != nil {
+		return 0, 0, err
+	}
+
+	if len(numbers) == 1 {
+		return number, number, nil
+	}
+	if len(numbers) > 2 {
+		return 0, 0, ErrIncorrectLength
+	}
+	total, err := strconv.Atoi(numbers[1])
+	if err != nil {
+		return number, 0, err
+	}
+	return number, total, nil
+}
+
+func setAttachedPictureImpl(tname string, picture *AttachedPicture, frames map[string][]byte)  {
+	// set UTF-8
+	result := []byte{0}
+
+	// MIME type
+	result = append(result, []byte(picture.MIME)...)
+	result = append(result, 0x00)
+
+	// Picture type
+	result = append(result, picture.PictureType)
+
+	// Picture description
+	result = append(result, []byte(picture.Description)...)
+	result = append(result, 0x00)
+
+	// Picture data
+	result = append(result, picture.Data...)
+
+// TODO(rjk): The string conversion seems suprfluous.
+// I have discarded the 
+	frames[tname] = result
+}
+
+// TODO(rjk): Use buffered I/O
+func saveFileImpl(sm SaveMetadata, path string) error {
+	file, err := os.Create(path)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+
+	return sm.Save(file)
+}
+
+type AllHeaderFields [][]byte
+
+// size is the total size of all of the header fields.
+func (hfs AllHeaderFields) size() int {
+	sz := 0
+	for _, h := range hfs {
+		sz += len(h)
+	}
+	return sz
+}		
+
+// writeHeaderImpl writes an ID3v2 header payload in a configurable
+// fashion to writer. hf defines an of header fields with their
+// associated size in bytes.
+func writeHeaderImpl(writer io.Writer,  hf AllHeaderFields) error {
+	headerByte := make([]byte, hf.size())
+
+	start := 0
+	for _, h := range hf {
+		copy(headerByte[start:start+len(h)], h)
+		start += len(h)
+	}
+
+	nWriten, err := writer.Write(headerByte)
+	if err != nil {
+		return err
+	}
+	if nWriten != len(headerByte) {
+		return ErrWriting
+	}
+	return nil
+
 }

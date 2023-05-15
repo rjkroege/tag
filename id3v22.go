@@ -9,17 +9,14 @@ import (
 	"io"
 	"regexp"
 	"strconv"
-	"strings"
 	"time"
+	"fmt"
 )
 
-type ID3v22Frame = ID3v2Frame
+//type ID3v22Frame = ID3v2Frame
 
 type ID3v22 struct {
-	Marker     string // Always
-	Length     int
-	Frames     map[string][]byte
-	UserFrames map[string][]byte
+	ID3v2
 }
 
 func (id3v2 *ID3v22) GetAllTagNames() []string {
@@ -31,7 +28,7 @@ func (id3v2 *ID3v22) GetVersion() Version {
 }
 
 func (id3v2 *ID3v22) GetFileData() []byte {
-	panic("implement me")
+	return id3v2.Data
 }
 
 func (id3v2 *ID3v22) GetTitle() (string, error) {
@@ -47,17 +44,24 @@ func (id3v2 *ID3v22) GetAlbum() (string, error) {
 }
 
 func (id3v2 *ID3v22) GetYear() (int, error) {
-	year, err := id3v2.GetString("TYE")
-	if err != nil {
-		return 0, nil
-	}
-	return strconv.Atoi(year)
+	return wrappedAtoi(getStringImpl("TYE", id3v2.Frames))
 }
 
+// TODO(rjk): This is wrong in the same way as the ID3v24 version.
+// Also: I am not correctly handling the situation with multiple comments.
+// TODO(rjk): Add support for multiple comments.
 func (id3v2 *ID3v22) GetComment() (string, error) {
-	panic("implement me")
+	commentStr, err := getStringImpl("COM", id3v2.Frames)
+	if err != nil {
+		return "", err
+	}
+	if len(commentStr) < 4 {
+		return "", ErrIncorrectLength
+	}
+	return commentStr[4:], nil
 }
 
+// TODO(rjk): Is there commonality with this?
 func (id3v2 *ID3v22) GetGenre() (string, error) {
 	genre, err := id3v2.GetString("TCO")
 	if err != nil {
@@ -76,51 +80,61 @@ func (id3v2 *ID3v22) GetGenre() (string, error) {
 }
 
 func (id3v2 *ID3v22) GetAlbumArtist() (string, error) {
-	panic("implement me")
+	return "", fmt.Errorf("GetAlbumArtist not available in ID3v22")
 }
 
+// TODO(rjk): time management has changed a lot between the tag versions.
+// Only month and day are available from TDA. Figure out how to proceed
+// here.
 func (id3v2 *ID3v22) GetDate() (time.Time, error) {
 	panic("implement me")
+
+	// "TDA"
+	// date, err := id3v2.GetString("TDA")
+	//if err != nil {
+	//	return "", err
+	//}
 }
 
 func (id3v2 *ID3v22) GetArranger() (string, error) {
-	panic("implement me")
+	return getStringImpl("TP4", id3v2.Frames)
 }
 
 func (id3v2 *ID3v22) GetAuthor() (string, error) {
-	panic("implement me")
+	return getStringImpl("TOL", id3v2.Frames)
 }
 
 func (id3v2 *ID3v22) GetBPM() (int, error) {
-	panic("implement me")
+	return wrappedAtoi(getStringImpl("TBP", id3v2.Frames))
 }
 
 func (id3v2 *ID3v22) GetCatalogNumber() (string, error) {
-	panic("implement me")
+	// This is non-standard.
+	return id3v2.GetStringTXX("CATALOGNUMBER")
 }
 
 func (id3v2 *ID3v22) GetCompilation() (string, error) {
-	panic("implement me")
+	return "", fmt.Errorf("GetCompilation not available in ID3v22")
 }
 
 func (id3v2 *ID3v22) GetComposer() (string, error) {
-	panic("implement me")
+	return getStringImpl("TCM", id3v2.Frames)
 }
 
 func (id3v2 *ID3v22) GetConductor() (string, error) {
-	panic("implement me")
+	return getStringImpl("TP3", id3v2.Frames)
 }
 
 func (id3v2 *ID3v22) GetCopyright() (string, error) {
-	panic("implement me")
+	return getStringImpl("TCR", id3v2.Frames)
 }
 
 func (id3v2 *ID3v22) GetDescription() (string, error) {
-	panic("implement me")
+	return getStringImpl("TT3", id3v2.Frames)
 }
 
 func (id3v2 *ID3v22) GetDiscNumber() (int, int, error) {
-	panic("implement me")
+	return getSplitNumberImpl("TPA", id3v2.Frames )
 }
 
 func (id3v2 *ID3v22) GetEncodedBy() (string, error) {
@@ -128,30 +142,7 @@ func (id3v2 *ID3v22) GetEncodedBy() (string, error) {
 }
 
 func (id3v2 *ID3v22) GetTrackNumber() (int, int, error) {
-	track, err := id3v2.GetString("TRK")
-	if err != nil {
-		return 0, 0, err
-	}
-	parts := strings.Split(track, "/")
-	if len(parts) == 1 {
-		number, err := strconv.Atoi(parts[0])
-		if err != nil {
-			return 0, 0, err
-		}
-		return number, number, nil
-	} else if len(parts) == 2 {
-		number1, err := strconv.Atoi(parts[0])
-		if err != nil {
-			return 0, 0, err
-		}
-		number2, err := strconv.Atoi(parts[1])
-		if err != nil {
-			return 0, 0, err
-		}
-		return number1, number2, nil
-	}
-
-	return 0, 0, ErrIncorrectTag
+	return getSplitNumberImpl("TRK", id3v2.Frames )
 }
 
 func (id3v2 *ID3v22) GetPicture() (image.Image, error) {
@@ -204,11 +195,11 @@ func (id3v2 *ID3v22) GetAttachedPicture() (*AttachedPicture, error) {
 }
 
 // GetStringTXX - get user frame
-func (id3v2 *ID3v24) GetStringTXX(name string) (string, error) {
+func (id3v2 *ID3v22) GetStringTXX(name string) (string, error) {
 	return getStringImpl(name, id3v2.UserFrames)
 }
 
-func (id3v2 *ID3v24) GetIntTXX(name string) (int, error) {
+func (id3v2 *ID3v22) GetIntTXX(name string) (int, error) {
 	return wrappedAtoi(getStringImpl(name, id3v2.UserFrames))
 }
 
@@ -225,19 +216,29 @@ func (id3v2 *ID3v22) SetAlbum(album string) error {
 }
 
 func (id3v2 *ID3v22) SetYear(year int) error {
-	panic("implement me")
+	setStringImpl("TYE", fmt.Sprintf("%d", year), id3v2.Frames)
+	return nil
 }
 
 func (id3v2 *ID3v22) SetComment(comment string) error {
-	panic("implement me")
+	 id3v2.SetString("COM", comment)
+	return nil
+
 }
 
+// TODO(rjk): It's arguable that this is wrong. 
 func (id3v2 *ID3v22) SetGenre(genre string) error {
-	panic("implement me")
+	gen, err := GetGenreByName(genre)
+	if err != nil {
+		return err
+	}
+
+	// It's unclear to me if this will roundtrip correctly. I think so?
+	return id3v2.SetString("TCO", fmt.Sprintf("(%d)", gen))
 }
 
 func (id3v2 *ID3v22) SetAlbumArtist(albumArtist string) error {
-	panic("implement me")
+	return fmt.Errorf("SetAlbumArtist not available in ID3v22")
 }
 
 func (id3v2 *ID3v22) SetDate(date time.Time) error {
@@ -245,43 +246,52 @@ func (id3v2 *ID3v22) SetDate(date time.Time) error {
 }
 
 func (id3v2 *ID3v22) SetArranger(arranger string) error {
-	panic("implement me")
+	 setStringImpl("TP4", arranger, id3v2.Frames)
+	return nil
 }
 
 func (id3v2 *ID3v22) SetAuthor(author string) error {
-	panic("implement me")
+	 setStringImpl("TOL",author, id3v2.Frames)
+	return nil
 }
 
 func (id3v2 *ID3v22) SetBPM(bmp int) error {
-	panic("implement me")
+	 setStringImpl("TBP",fmt.Sprintf("%d", bmp), id3v2.Frames)
+	return nil
 }
 
 func (id3v2 *ID3v22) SetCatalogNumber(catalogNumber string) error {
-	panic("implement me")
+	 setStringImpl("CATALOGNUMBER",catalogNumber, id3v2.UserFrames)
+	return nil
 }
 
 func (id3v2 *ID3v22) SetCompilation(compilation string) error {
-	panic("implement me")
+	return  fmt.Errorf("SetCompilation not available in ID3v22")
 }
 
 func (id3v2 *ID3v22) SetComposer(composer string) error {
-	panic("implement me")
+	 setStringImpl("TCM",composer, id3v2.Frames)
+	return nil
 }
 
 func (id3v2 *ID3v22) SetConductor(conductor string) error {
-	panic("implement me")
+	 setStringImpl("TP3",conductor, id3v2.Frames)
+	return nil
 }
 
 func (id3v2 *ID3v22) SetCopyright(copyright string) error {
-	panic("implement me")
+	 setStringImpl("TCR",copyright, id3v2.Frames)
+	return nil
 }
 
 func (id3v2 *ID3v22) SetDescription(description string) error {
-	panic("implement me")
+	 setStringImpl("TT3",description, id3v2.Frames)
+	return nil
 }
 
 func (id3v2 *ID3v22) SetDiscNumber(number int, total int) error {
-	panic("implement me")
+	 setStringImpl("TPA",fmt.Sprintf("%d/%d", number, total), id3v2.Frames)
+	return nil
 }
 
 func (id3v2 *ID3v22) SetEncodedBy(encodedBy string) error {
@@ -289,43 +299,76 @@ func (id3v2 *ID3v22) SetEncodedBy(encodedBy string) error {
 }
 
 func (id3v2 *ID3v22) SetTrackNumber(number int, total int) error {
-	panic("implement me")
+	 setStringImpl("TRK",fmt.Sprintf("%d/%d", number, total), id3v2.Frames)
+	return nil
 }
 
+// TODO(rjk): Refactor to share implementation with id3v24.
 func (id3v2 *ID3v22) SetPicture(picture image.Image) error {
-	panic("implement me")
+	// Only PNG
+	buf := new(bytes.Buffer)
+	err := png.Encode(buf, picture)
+	if err != nil {
+		return err
+	}
+
+	attacheched, err := id3v2.GetAttachedPicture()
+	if err != nil {
+		// Set default params
+		newPicture := &AttachedPicture{
+			MIME:        "image/png",
+			PictureType: 2, // Other file info
+			Description: "",
+			Data:        buf.Bytes(),
+		}
+		setAttachedPictureImpl("PIC", newPicture, id3v2.Frames)
+		return nil
+	}
+	// save metainfo
+	attacheched.MIME = mimeImagePNG
+	attacheched.Data = buf.Bytes()
+
+	setAttachedPictureImpl("PIC", attacheched, id3v2.Frames)
+	return nil
+}
+
+func (id3v2 *ID3v22) DeleteTag(name string) error {
+	delete(id3v2.Frames, name)
+	return nil
 }
 
 func (id3v2 *ID3v22) DeleteAll() error {
-	panic("implement me")
+	id3v2.Frames = make(map[string][]byte)
+	return nil
 }
 
 func (id3v2 *ID3v22) DeleteTitle() error {
-	panic("implement me")
+	return id3v2.DeleteTag("TT2")
 }
 
 func (id3v2 *ID3v22) DeleteArtist() error {
-	panic("implement me")
+	return id3v2.DeleteTag("TP1")
 }
 
 func (id3v2 *ID3v22) DeleteAlbum() error {
-	panic("implement me")
+	return id3v2.DeleteTag("TAL")
 }
 
 func (id3v2 *ID3v22) DeleteYear() error {
-	panic("implement me")
+	return id3v2.DeleteTag("TYE")
 }
 
 func (id3v2 *ID3v22) DeleteComment() error {
-	panic("implement me")
+	// TODO(rjk): NB the need to sort this out.
+	return id3v2.DeleteTag("COM")
 }
 
 func (id3v2 *ID3v22) DeleteGenre() error {
-	panic("implement me")
+	return id3v2.DeleteTag("TCO")
 }
 
 func (id3v2 *ID3v22) DeleteAlbumArtist() error {
-	panic("implement me")
+	return  fmt.Errorf("DeleteAlbumArtist not available in ID3v22")
 }
 
 func (id3v2 *ID3v22) DeleteDate() error {
@@ -333,63 +376,100 @@ func (id3v2 *ID3v22) DeleteDate() error {
 }
 
 func (id3v2 *ID3v22) DeleteArranger() error {
-	panic("implement me")
+	return id3v2.DeleteTag("TP4")
 }
 
 func (id3v2 *ID3v22) DeleteAuthor() error {
-	panic("implement me")
+	return id3v2.DeleteTag("TOL")
 }
 
 func (id3v2 *ID3v22) DeleteBPM() error {
-	panic("implement me")
+	return id3v2.DeleteTag("TBP")
 }
 
 func (id3v2 *ID3v22) DeleteCatalogNumber() error {
-	panic("implement me")
+	delete(id3v2.UserFrames, "CATALOGNUMBER")
+	return nil
 }
 
 func (id3v2 *ID3v22) DeleteCompilation() error {
-	panic("implement me")
+	return  fmt.Errorf("DeleteCompilation not available in ID3v22")
 }
 
 func (id3v2 *ID3v22) DeleteComposer() error {
-	panic("implement me")
+	return id3v2.DeleteTag("TCM")
 }
 
 func (id3v2 *ID3v22) DeleteConductor() error {
-	panic("implement me")
+	return id3v2.DeleteTag("TP3")
 }
 
 func (id3v2 *ID3v22) DeleteCopyright() error {
-	panic("implement me")
+	return id3v2.DeleteTag("TCR")
 }
 
 func (id3v2 *ID3v22) DeleteDescription() error {
-	panic("implement me")
+	return id3v2.DeleteTag("TT3")
 }
 
 func (id3v2 *ID3v22) DeleteDiscNumber() error {
-	panic("implement me")
+	return id3v2.DeleteTag("TPA")
 }
 
 func (id3v2 *ID3v22) DeleteEncodedBy() error {
-	panic("implement me")
+	return id3v2.DeleteTag("TEN")
 }
 
 func (id3v2 *ID3v22) DeleteTrackNumber() error {
-	panic("implement me")
+	return id3v2.DeleteTag("TRK")
 }
 
 func (id3v2 *ID3v22) DeletePicture() error {
-	panic("implement me")
+	return id3v2.DeleteTag("PIC")
 }
 
+// TODO(rjk): Refactor me. 
 func (id3v2 *ID3v22) SaveFile(path string) error {
-	panic("implement me")
+	return saveFileImpl(id3v2, path)
 }
 
-func (id3v2 *ID3v22) Save(input io.WriteSeeker) error {
-	panic("implement me")
+func sizePackID3v22(length int) []byte {
+	header := make([]byte, id3v22FrameHeaderSize)
+		header[0] = byte(length >> 16)
+		header[1] = byte(length >> 8)
+		header[2] = byte(length)
+	return header
+}
+
+func (id3v2 *ID3v22) Save(writer io.WriteSeeker) error {
+	id3v22packings := AllHeaderFields{
+		 []byte(id3MarkerValue),
+		 []byte{2, 0, 0},
+		IntToByteSynchsafe(getFramesLength(id3v2.Frames) + getFramesLength(id3v2.UserFrames)),
+	}
+
+	// write header
+	err := writeHeaderImpl(writer, id3v22packings)
+	if err != nil {
+		return err
+	}
+
+	// write tags
+	err =  writeFramesImpl(writer, id3v2.Frames, sizePackID3v22)
+	if err != nil {
+		return err
+	}
+	err =  writeFramesImpl(writer,  id3v2.UserFrames, sizePackID3v22)
+	if err != nil {
+		return err
+	}
+
+	// write data
+	_, err = writer.Write(id3v2.Data)
+	if err != nil {
+		return err
+	}
+	return nil
 }
 
 // nolint:gocyclo

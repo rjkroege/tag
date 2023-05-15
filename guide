@@ -1,0 +1,4 @@
+Edit X:tag/\+Errors: 1,$d
+X:tag/.*\.go: w
+
+go test  ./tests
