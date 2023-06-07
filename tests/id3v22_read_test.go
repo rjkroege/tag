@@ -8,6 +8,9 @@ import (
 	"os"
 	"reflect"
 	"testing"
+	"io"
+	"fmt"
+	"path/filepath"
 )
 
 func TestId3v22Read(t *testing.T) {
@@ -58,4 +61,94 @@ func TestId3v22Read(t *testing.T) {
 	asrt.NoError(err)
 	asrt.Equal(1, trackNumber)
 	asrt.Equal(11, totalNumber)
+}
+
+func copyfile(t *testing.T, from, to string) {
+	t.Helper()
+
+	sfd, err := os.Open(from)
+	if err != nil {
+		t.Fatalf("copyfile open %q: %v", from, err)
+	}
+	dfd, err := os.Create(to)
+	if err != nil {
+		t.Fatalf("copyfile create %q: %v", to, err)
+	}
+	
+	if _, err := io.Copy(dfd, sfd); err != nil {
+		t.Fatalf("copyfile copying: %v", err)
+	}
+}
+
+func TestId3v22RMW(t *testing.T) {
+	testdir := t.TempDir()
+	mp3file := "id3v2.2.mp3"
+
+	for _, v := range []struct{
+		name string
+		mutator  func(s tag.Metadata) error
+		checker  func(g tag.Metadata) error
+	}{
+	{
+		name: "Title",
+		mutator: func(s tag.Metadata) error {
+			return s.SetTitle("binky was here")
+		},
+		checker: func(s tag.Metadata) error {
+			got, err := s.GetTitle()
+			if err != nil {
+				return nil
+			}
+			if got != "binky was here" {
+				return fmt.Errorf("got: %s, want: %s", got, "binky was here")
+			}
+			return nil
+		},
+	},
+	} {
+		t.Run(v.name, func(t *testing.T) {
+			testfile := filepath.Join(testdir, v.name + "-" + mp3file)
+			outfile := filepath.Join(testdir, v.name + "-out-" + mp3file)
+			copyfile(t, mp3file, testfile)
+
+			// Read the tag data.
+			id3, err := tag.ReadFile(testfile)
+			if err != nil {
+				t.Errorf("can't read tags from %q: %v", testfile, err)
+				return
+			}
+				
+			// Modify the tag data.
+			err = v.mutator(id3)
+			if err != nil {
+				t.Errorf("can't mutate %q: %v", testfile, err)
+			}
+
+			// Write to a different file.
+			err = id3.SaveFile(outfile)
+			if err != nil {
+				t.Errorf("can't save %q: %v", outfile, err)
+			}
+
+// does it even exist
+			fi, err := os.Stat(outfile)
+			if err != nil {
+				t.Errorf("outfile %q doesn't exist", outfile)
+			}
+			t.Logf("written file %q size %d", outfile, fi.Size())
+
+			// Verify that the update happened
+			id3m, err := tag.ReadFile(outfile)
+			if err != nil {
+				t.Errorf("can't read tags from %q: %v", outfile, err)
+				return
+			}
+
+			// Check that the mutation happened
+			err = v.checker(id3m)
+			if err != nil {
+				t.Errorf("ch %q: %v", testfile, err)
+			}
+		})
+	}
 }

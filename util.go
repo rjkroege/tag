@@ -12,6 +12,8 @@ import (
 	"strconv"
 	"strings"
 	"os"
+
+	"log"
 )
 
 func seekAndRead(input io.ReadSeeker, offset int64, whence int, read int) ([]byte, error) {
@@ -362,6 +364,9 @@ func sizePackID3v234(length int) []byte {
 
 func writeFramesImpl(writer io.Writer, hf map[string][]byte, packer func(int)[]byte) error {
 	for k, v := range hf {
+
+log.Printf("%s: length %d", k, len(v))
+
 		header := packer(len(v))
 
 		// Frame id
@@ -382,12 +387,12 @@ func writeFramesImpl(writer io.Writer, hf map[string][]byte, packer func(int)[]b
 	return nil
 }
 
-func getFramesLength(f map[string][]byte) int {
+func getFramesLength(f map[string][]byte, headersz int) int {
 	result := 0
 	// TODO(rjk): Make the size of the header configurable.
 	for _, v := range f {
-		// 10 - size of tag header
-		result += 10 + len(v)
+		// headersz - size of tag header
+		result += headersz + len(v)
 	}
 	return result
 }

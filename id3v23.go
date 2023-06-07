@@ -400,7 +400,7 @@ func (id3v2 *ID3v23) writeHeaderID3v23(writer io.Writer) error {
 	id3v24packings := AllHeaderFields{
 		 []byte(id3MarkerValue),
 		 []byte{3, 0, 0},
-		IntToByteSynchsafe(getFramesLength(id3v2.Frames) + getFramesLength(id3v2.UserFrames)),
+		IntToByteSynchsafe(getFramesLength(id3v2.Frames, id3v24FrameHeaderSize) + getFramesLength(id3v2.UserFrames, id3v24FrameHeaderSize)),
 	}
 	return writeHeaderImpl(writer, id3v24packings)
 }

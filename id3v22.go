@@ -11,6 +11,8 @@ import (
 	"strconv"
 	"time"
 	"fmt"
+
+	"log"
 )
 
 //type ID3v22Frame = ID3v2Frame
@@ -445,8 +447,10 @@ func (id3v2 *ID3v22) Save(writer io.WriteSeeker) error {
 	id3v22packings := AllHeaderFields{
 		 []byte(id3MarkerValue),
 		 []byte{2, 0, 0},
-		IntToByteSynchsafe(getFramesLength(id3v2.Frames) + getFramesLength(id3v2.UserFrames)),
+		IntToByteSynchsafe(getFramesLength(id3v2.Frames, id3v22FrameHeaderSize) + getFramesLength(id3v2.UserFrames, id3v22FrameHeaderSize)),
 	}
+
+log.Println("Save", id3v22packings, getFramesLength(id3v2.Frames, id3v22FrameHeaderSize) + getFramesLength(id3v2.UserFrames, id3v22FrameHeaderSize))
 
 	// write header
 	err := writeHeaderImpl(writer, id3v22packings)
@@ -522,6 +526,8 @@ func ReadID3v22(input io.ReadSeeker) (*ID3v22, error) {
 	length := ByteToIntSynchsafe(headerByte[6:10])
 	header.Length = length
 
+log.Printf("ReadID3v22 length %d", length)
+
 	// Extended headers
 	header.Frames = make(map[string][]byte)
 	curRead := 0
@@ -537,8 +543,11 @@ func ReadID3v22(input io.ReadSeeker) (*ID3v22, error) {
 		// Frame identifier
 		key := string(bytesExtendedHeader[0:3])
 
+
 		// Frame data size
 		size := ByteToInt(bytesExtendedHeader[3:id3v22FrameHeaderSize])
+
+log.Printf("key: %s %d", key, size)
 
 		bytesExtendedValue := make([]byte, size)
 		nReaded, err = input.Read(bytesExtendedValue)
@@ -546,6 +555,7 @@ func ReadID3v22(input io.ReadSeeker) (*ID3v22, error) {
 			return nil, err
 		}
 		if nReaded != size {
+log.Printf("problem! want %d, got %d", size, nReaded)
 			return nil, errors.New("error extended value length")
 		}
 
@@ -575,6 +585,8 @@ func ReadID3v22(input io.ReadSeeker) (*ID3v22, error) {
 
 		curRead += id3v22FrameHeaderSize + size
 	}
+
+// The saving won't work without having read the datafile?
 	return &header, nil
 }
 
